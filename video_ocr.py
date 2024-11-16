@@ -85,6 +85,7 @@ def _open_cv_video(filepath):
 
 def _get_frames(video_capture, sample_rate):
     fps = int(video_capture.get(cv.CAP_PROP_FPS))
+    print(f"FPS: {fps}", fps)
     pbar.total = (
         video_capture.get(cv.CAP_PROP_FRAME_COUNT) // (fps // sample_rate)
     ) - 1
@@ -107,8 +108,9 @@ def _pairwise(iterable):
 
 
 def _are_similar_frame(f1, f2):
-    diff = np.count_nonzero(phash(f1.image) != phash(f2.image))
-    return diff <= 15
+    #diff = np.count_nonzero(phash(f1.image) != phash(f2.image))
+    return False
+    #return diff <= 3
 
 
 def _filter_redundant_frames(frames):
@@ -136,9 +138,12 @@ def _write_if_debug(frames, debug_dir):
     if not debug_dir:
         return
     for frame in frames:
-        cv.imwrite(os.path.join(debug_dir, f"{frame.frame_number}.png"), frame.image)
-        with open(os.path.join(debug_dir, f"{frame.frame_number}.txt"), "w") as f:
-            f.write(frame.text)
+        try:
+            cv.imwrite(os.path.join(debug_dir, f"{frame.frame_number}.png"), frame.image)
+            with open(os.path.join(debug_dir, f"{frame.frame_number}.txt"), "w") as f:
+                f.write(frame.text)
+        except:
+            print("frame write failure")
 
 
 def perform_video_ocr(filepath: str, sample_rate: int = 1, debug_dir: str = ""):
@@ -155,8 +160,59 @@ def perform_video_ocr(filepath: str, sample_rate: int = 1, debug_dir: str = ""):
     for frame in frames:
         if frame.text.strip():
             non_empty_frames.append(frame)
-    _write_if_debug(non_empty_frames, debug_dir)
+
+    transcript = []
+    for frame in non_empty_frames:
+        transcript = _merge_transcript(transcript, frame.text)
+
+    _output_transcript(filepath, transcript)
+    #_write_if_debug(non_empty_frames, debug_dir)
     return non_empty_frames
+
+def _output_transcript(filepath, transcript):
+    with open(os.path.join("transcripts/"+filepath+".txt"), "w") as f:
+        for line in transcript:
+            try:
+                f.write(line + "\n")
+            except:
+                print("line write failure")
+
+    """
+    if not debug_dir:
+        return
+    for frame in frames:
+        try:
+            cv.imwrite(os.path.join(debug_dir, f"{frame.frame_number}.png"), frame.image)
+            with open(os.path.join(debug_dir, f"{frame.frame_number}.txt"), "w") as f:
+                f.write(frame.text)
+        except:
+            print("frame write failure")
+    """
+       
+def _merge_transcript(transcript, text):
+    lines = text.split("\n")
+
+    if len(lines) == 0:
+        return transcript
+    
+    compare_line = -1
+
+    for idx, line in enumerate(lines):
+        if len(line) > 5:
+            compare_line = idx
+            break
+
+    if compare_line == -1: 
+        return transcript + lines
+    
+    for index in range(len(transcript)-1, max(0, len(transcript)-50), -1):
+        if lines[compare_line] == transcript[index]:
+            transcript = transcript[index:] + lines
+            return transcript
+        
+    return transcript + lines
+
+
 
 
 def _get_time_stamp(seconds):
@@ -203,6 +259,4 @@ def main(filepath, sample_rate, debug_dir):
         )
     _display_frames(frames)
 
-
-if IS_CL:
-    main()
+main()
